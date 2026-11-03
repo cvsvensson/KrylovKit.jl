@@ -146,4 +146,15 @@ end
         S, lvecs, rvecs, = @test_logs (:warn, r"returning 0 values") svdsolve(zeros(3, 3), ones(3))
         @test isempty(S) && isempty(lvecs) && isempty(rvecs)
     end
+    @testset "value near 0 with a valid right vector, $which" for (A, x₀, which, vals, atol) in (
+            ([1.0 0; 0 1.0e-20], [1.0, 1.0], :LR, [1.0, 1.0e-20], 0.0),
+            ([1.0 0 1; 0 1 1; 1 1 2], [1.0, 2.0, 4.0], :SR, [0.0, 1.0, 3.0], 1.0e-13),
+        )
+        S, lvecs, rvecs, = svdsolve(A, x₀, length(x₀), which, GKL(; krylovdim = 20))
+        @test all(isapprox.(S, vals; atol))
+        for (s, u, v) in zip(S, lvecs, rvecs)
+            @test A * v ≈ s * u atol = 1.0e-13
+            @test A' * u ≈ s * v atol = 1.0e-13
+        end
+    end
 end
