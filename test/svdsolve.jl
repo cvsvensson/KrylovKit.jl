@@ -125,10 +125,10 @@ end
         ([1.0 1 1; 1 1 1], [1.0, -0.5], [sqrt(6)]), # wide
         (ComplexF64[1 im 0; -im 1 0; 0 0 2], ComplexF64[1, 0, 1], [2.0]),
         ([1.0 1; 1 1], [1.0, -1], Float64[]), # start vector in the null space of A'
+        # σ = 4 is orthogonal to the start
+        ([0.0 0 -1 -1; 0 0 1 1; -1 1 4 0; -1 1 0 4], [1.0, 0, 0, 0], [sqrt(8) + 2, sqrt(8) - 2]),
     ]
-    @testset for orth in (cgs2, mgs2, cgsr, mgsr), (A, x, expected) in cases
-        alg = GKL(; orth = orth, krylovdim = 8, tol = 1.0e-12, verbosity = SILENT_LEVEL)
-        S, lvecs, rvecs, info = @constinferred svdsolve(A, x, 1, :LR, alg)
+    function check(A, expected, S, lvecs, rvecs, info)
         @test S ≈ expected
         @test info.converged == length(S) <= minimum(size(A))
         for (s, u, v, nr) in zip(S, lvecs, rvecs, info.normres)
@@ -136,6 +136,15 @@ end
             @test norm(A' * u - s * v) < 1.0e-12
             @test nr < 1.0e-12
         end
+        return nothing
+    end
+    @testset for orth in (cgs2, mgs2, cgsr, mgsr), (A, x, expected) in cases
+        alg = GKL(; orth = orth, krylovdim = 8, tol = 1.0e-12, verbosity = SILENT_LEVEL)
+        check(A, expected, (@constinferred svdsolve(A, x, 1, :LR, alg))...)
+    end
+
+    @testset "default settings" for (A, x, expected) in cases[[1, 2, 3, 4, 5, 7]]
+        check(A, expected, svdsolve(A, x, 1, :LR)...)
     end
 
     @testset for mode in (:inplace, :outplace, :mixed)
