@@ -41,9 +41,9 @@ Keeping `α_k = 0` makes the last column of the square `B` zero. `bdsqr!` then g
 
 | Orthogonalizer | Ratio |
 |---|---|
-| `ModifiedGramSchmidt2` | up to `6e-16` on tall matrices |
-| `ModifiedGramSchmidtIR` | up to `6e-16`, except `2.0` when scaled by `1e-6` |
-| `ClassicalGramSchmidtIR` | about `1e-300`, by underflow |
+| `ModifiedGramSchmidt2` | below `1e-15` in Float64, about `1e-7` in Float32 |
+| `ModifiedGramSchmidtIR` | the same, except `2.0` when scaled by `1e-6` and `3e-12` for a graded matrix |
+| `ClassicalGramSchmidtIR` | underflows towards 0 |
 | All, rank-5 40×40 | about 170: real tiny singular values, and continuing is valid |
 | `ClassicalGramSchmidt`, `ModifiedGramSchmidt`, 8×3 | 2 to 45 |
 
