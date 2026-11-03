@@ -118,9 +118,12 @@ end
 @testset "GKL - svdsolve with a start vector overlapping the null space of A'" begin
     # `A' * u` then falls into the span of `V`, i.e. `α = 0`, before `β` vanishes
     tall = [2.0 0; 0 1; 1 1]
+    rng = Xoshiro(4)
+    random_tall = randn(rng, 8, 3) # with `cgs` or `mgs`, `α` is above 10 eps at the breakdown
     cases = [
         ([5.0 5 2; 5 5 2; 2 2 8], [1.0, 0, -1], [6.0]), # σ = 12 is orthogonal to the start
         (tall, [1.0, 2, 3], svdvals(tall)),
+        (random_tall, randn(rng, 8), svdvals(random_tall)),
         ([0.0 0; 0 1], [1.0, 1], [1.0]),
         ([1.0 1 1; 1 1 1], [1.0, -0.5], [sqrt(6)]), # wide
         (ComplexF64[1 im 0; -im 1 0; 0 0 2], ComplexF64[1, 0, 1], [2.0]),
@@ -138,12 +141,12 @@ end
         end
         return nothing
     end
-    @testset for orth in (cgs2, mgs2, cgsr, mgsr), (A, x, expected) in cases
+    @testset for orth in (cgs, mgs, cgs2, mgs2, cgsr, mgsr), (A, x, expected) in cases
         alg = GKL(; orth = orth, krylovdim = 8, tol = 1.0e-12, verbosity = SILENT_LEVEL)
         check(A, expected, (@constinferred svdsolve(A, x, 1, :LR, alg))...)
     end
 
-    @testset "default settings" for (A, x, expected) in cases[[1, 2, 3, 4, 5, 7]]
+    @testset "default settings" for (A, x, expected) in cases[[1, 2, 3, 4, 5, 6, 8]]
         check(A, expected, svdsolve(A, x, 1, :LR)...)
     end
 

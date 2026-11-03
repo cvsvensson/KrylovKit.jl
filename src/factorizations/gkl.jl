@@ -313,6 +313,15 @@ function gklrecurrence(
     v = apply_adjoint(operator, u)
     v = add!!(v, V[end], -β)
     α = norm(v)
+    # Only `V[end]` was removed, so a breakdown leaves `α` at the size of the orthogonality
+    # error rather than rounding level. This pass tells the two apart, and only runs when
+    # `α` is suspiciously small, which is below `sqrt(eps) * norm(B)`.
+    if α < αtol / (10 * sqrt(eps(typeof(α))))
+        for q in V
+            v, = orthogonalize!!(v, q, ModifiedGramSchmidt())
+        end
+        α = norm(v)
+    end
     v, α = _gkl_normalize!!(v, α, αtol)
 
     r = apply_normal(operator, v)
