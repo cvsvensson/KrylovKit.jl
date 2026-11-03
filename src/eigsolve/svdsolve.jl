@@ -179,22 +179,38 @@ function svdsolve(
     while true
         β = normres(fact)
         K = length(fact)
+        K′ = K
 
-        if β <= tol && K < howmany
+        # If `A' * U[K]` lies in the span of `V[1:(K - 1)]`, `V[K]` is noise or `NaN`, which
+        # orthogonalizing `r` can hide. No singular value belongs to it, so drop that column.
+        if !(β > tol)
+            V = basis(fact, Val(:V))
+            α = fact.αs[K]
+            numops += !iszero(α)
+            if iszero(α) || !(norm(add!!(apply_normal(A, V[K]), basis(fact, Val(:U))[K], -α)) <= tol)
+                K′ = K - 1
+                β = fact.αs[K] = fact.βs[K] = zero(β)
+                V[K] = zerovector!!(V[K])
+                fact.r = zerovector!!(fact.r)
+            end
+        end
+        if β <= tol && K′ < howmany
             if alg.verbosity >= WARN_LEVEL
-                _warn_invariant_subspace(K, tol, howmany)
+                _warn_invariant_subspace(K′, tol, howmany)
             end
         end
         if K == krylovdim || β <= tol || (alg.eager && K >= howmany)
             P = copyto!(view(PP, 1:K, 1:K), I)
             Q = copyto!(view(QQ, 1:K, 1:K), I)
-            f = view(HH, K + 1, 1:K)
+            f = view(HH, K + 1, 1:K′)
             B = rayleighquotient(fact) # Bidiagional (lower)
 
             if K < krylovdim
                 B = deepcopy(B)
             end
             P, S, Q = bidiagsvd!(B, P, Q)
+            # singular values are sorted, so that of a dropped column is last
+            P, S, Q = view(P, :, 1:K′), view(S, 1:K′), view(Q, 1:K′, :)
             if which == :SR
                 reversecols!(P)
                 reverserows!(S)
@@ -205,7 +221,7 @@ function svdsolve(
             mul!(f, view(Q', K, :), β)
 
             converged = 0
-            while converged < K && abs(f[converged + 1]) < tol
+            while converged < K′ && abs(f[converged + 1]) < tol
                 converged += 1
             end
 
