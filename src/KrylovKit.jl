@@ -249,6 +249,42 @@ function _warn_invariant_subspace(K, tol, howmany)
     return nothing
 end
 
+# Single-pass recurrences lose orthogonality as Ritz values converge (Paige) and then yield
+# ghosts: further copies of a converged value, with a parallel Ritz vector. A single Krylov
+# vector can't produce these in exact arithmetic. Returns a permutation moving them last,
+# and the number of values to keep. `ritzvector(i)` is only called for close values, so this
+# applies no vector operations to a run without ghosts.
+const SinglePassGramSchmidt = Union{ClassicalGramSchmidt, ModifiedGramSchmidt}
+function _ghosts_last(vals, f, tol, ritzvector)
+    vectors = Dict{Int, Any}()
+    vector(i) = get!(() -> ritzvector(i), vectors, i)
+    function isghost(i, j) # `j` has the smaller residual
+        abs(vals[i] - vals[j]) <= tol + abs(abs(f[j]) <= tol ? f[i] : f[j]) || return false
+        return abs(inner(vector(i), vector(j))) > norm(vector(i)) * norm(vector(j)) / sqrt(2)
+    end
+    keep, ghosts = Int[], Int[]
+    for i in sortperm(abs.(f))
+        push!(any(j -> isghost(i, j), keep) ? ghosts : keep, i)
+    end
+    return vcat(sort!(keep), ghosts), length(keep)
+end
+
+# Without orthogonality, Ritz vectors need not have unit norm
+function _normalize_ritz!(vectors, residuals, normresiduals)
+    for i in eachindex(vectors)
+        n = norm(vectors[i])
+        vectors[i] = scale!!(vectors[i], 1 / n)
+        residuals[i] = scale!!(residuals[i], 1 / n)
+        normresiduals[i] /= n
+    end
+    return vectors
+end
+
+function _warn_ghosts(n, orth)
+    @warn "`$orth` lost orthogonality, so $n duplicate values were dropped and the result may have fewer values. A reorthogonalizing `orth` avoids this."
+    return nothing
+end
+
 # vectors with modified inner product
 include("innerproductvec.jl")
 

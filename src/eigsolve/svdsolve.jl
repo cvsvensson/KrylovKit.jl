@@ -175,6 +175,7 @@ function svdsolve(
 
     # initialize storage
     local P, Q, f, S
+    K′ = 0
     converged = 0
     while true
         β = normres(fact)
@@ -204,8 +205,22 @@ function svdsolve(
             end
             mul!(f, view(Q', K, :), β)
 
+            K′ = K
+            if alg.orth isa SinglePassGramSchmidt
+                ritzvector = let V = basis(fact, Val(:V)), Q = Q
+                    i -> V * view(Q, i, :)
+                end
+                p, K′ = _ghosts_last(S, f, tol, ritzvector)
+                if K′ < K
+                    S .= S[p]
+                    f .= f[p]
+                    P .= P[:, p]
+                    Q .= Q[p, :]
+                end
+            end
+
             converged = 0
-            while converged < K && abs(f[converged + 1]) < tol
+            while converged < K′ && abs(f[converged + 1]) < tol
                 converged += 1
             end
 
@@ -226,6 +241,7 @@ function svdsolve(
 
             # Determine how many to keep
             keep = div(3 * krylovdim + 2 * converged, 5) # strictly smaller than krylovdim since converged < howmany <= krylovdim, at least equal to converged
+            keep = min(keep, K′)
 
             # Update basis by applying P and Q using Householder reflections
             U = basis(fact, Val(:U))
@@ -242,6 +258,15 @@ function svdsolve(
             #     rmul!(view(Q, j+1:krylovdim, :), h)
             #     rmul!(V, h)
             # end
+
+            if K′ < K # ghosts are gone, but the kept vectors need not have unit norm
+                for j in 1:keep
+                    n = norm(V[j])
+                    U[j] = scale!!(U[j], 1 / norm(U[j]))
+                    V[j] = scale!!(V[j], 1 / n)
+                    f[j] /= n
+                end
+            end
 
             # Shrink GKL factorization (no longer strictly GKL)
             r = residual(fact)
@@ -274,7 +299,7 @@ function svdsolve(
             numiter += 1
         end
     end
-    howmany′ = max(converged, min(howmany, length(S)))
+    howmany′ = max(converged, min(howmany, K′))
     values = S[1:howmany′]
 
     # Compute schur vectors
@@ -293,6 +318,14 @@ function svdsolve(
     end
     normresiduals = let f = f
         map(i -> abs(f[i]), 1:howmany′)
+    end
+    if alg.orth isa SinglePassGramSchmidt
+        _normalize_ritz!(rightvectors, residuals, normresiduals)
+        map!(u -> scale!!(u, 1 / norm(u)), leftvectors, leftvectors)
+        converged = something(findfirst(>=(tol), view(normresiduals, 1:converged)), converged + 1) - 1
+        if K′ < length(fact) && alg.verbosity >= WARN_LEVEL
+            _warn_ghosts(length(fact) - K′, alg.orth)
+        end
     end
     if (converged < howmany′) && alg.verbosity >= WARN_LEVEL
         @warn """GKL svdsolve finished without convergence after $numiter iterations:

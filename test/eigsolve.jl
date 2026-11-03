@@ -813,3 +813,21 @@ end
         @test A * v ≈ d * v
     end
 end
+
+@testset "Lanczos - eigsolve drops ghost values of single-pass Gram-Schmidt" begin
+    # the short recurrence loses orthogonality as λ = 100 converges, and then repeats it
+    rng = Xoshiro(1)
+    Q = Matrix(qr(randn(rng, 60, 60)).Q)
+    A = Q * Diagonal([100.0; -50.0; range(1, 0.5, 58)]) * Q'
+    A = (A + A') / 2
+    x = randn(rng, 60)
+    @testset for orth in (cgs, mgs)
+        alg = Lanczos(; orth = orth, krylovdim = 30, maxiter = 1, tol = 1.0e-10, verbosity = WARN_LEVEL)
+        D, V, info = @test_logs (:warn, r"duplicate values") eigsolve(A, x, 2, :LM, alg)
+        @test D ≈ [100.0, -50.0]
+        @test info.converged == 2
+        V = stack(V)
+        @test V' * V ≈ I
+        @test A * V ≈ V * Diagonal(D)
+    end
+end

@@ -30,6 +30,7 @@ function eigsolve(
 
     converged = 0
     local D, U, f
+    K′ = 0
     while true
         β = normres(fact)
         K = length(fact)
@@ -43,6 +44,7 @@ function eigsolve(
         if K == krylovdim || β <= tol || (alg.eager && K >= howmany)
             U = copyto!(view(UU, 1:K, 1:K), I)
             f = view(HH, K + 1, 1:K)
+            K′ = K
             T = rayleighquotient(fact) # symtridiagonal
 
             # compute eigenvalues
@@ -59,8 +61,18 @@ function eigsolve(
                 p = sortperm(D; by = by, rev = rev)
                 D, U = permuteeig!(D, U, p)
                 mul!(f, view(U, K, :), β)
+                if alg.orth isa SinglePassGramSchmidt
+                    ritzvector = let B = basis(fact), U = U
+                        i -> B * view(U, :, i)
+                    end
+                    p, K′ = _ghosts_last(D, f, tol, ritzvector)
+                    if K′ < K
+                        D, U = permuteeig!(D, U, p)
+                        f .= f[p]
+                    end
+                end
                 converged = 0
-                while converged < K && abs(f[converged + 1]) <= tol
+                while converged < K′ && abs(f[converged + 1]) <= tol
                     converged += 1
                 end
             end
@@ -82,6 +94,16 @@ function eigsolve(
 
             # Determine how many to keep
             keep = div(3 * krylovdim + 2 * converged, 5) # strictly smaller than krylovdim since converged < howmany <= krylovdim, at least equal to converged
+            keep = min(keep, K′)
+            if K′ < K # ghosts are gone, but the kept vectors need not have unit norm
+                B = basistransform!(basis(fact), view(U, :, 1:keep))
+                for j in 1:keep
+                    n = norm(B[j])
+                    B[j] = scale!!(B[j], 1 / n)
+                    f[j] /= n
+                end
+                copyto!(view(U, :, 1:keep), I)
+            end
 
             # Restore Lanczos form in the first keep columns
             H = fill!(view(HH, 1:(keep + 1), 1:keep), zero(eltype(HH)))
@@ -114,7 +136,7 @@ function eigsolve(
         end
     end
 
-    howmany′ = max(converged, min(howmany, length(D)))
+    howmany′ = max(converged, min(howmany, K′))
     values = D[1:howmany′]
 
     # Compute eigenvectors
@@ -131,6 +153,13 @@ function eigsolve(
         map(i -> abs(f[i]), 1:howmany′)
     end
 
+    if alg.orth isa SinglePassGramSchmidt
+        _normalize_ritz!(vectors, residuals, normresiduals)
+        converged = something(findfirst(>(tol), view(normresiduals, 1:converged)), converged + 1) - 1
+        if K′ < length(fact) && alg.verbosity >= WARN_LEVEL
+            _warn_ghosts(length(fact) - K′, alg.orth)
+        end
+    end
     if (converged < howmany′) && alg.verbosity >= WARN_LEVEL # all values are converged after an invariant subspace
         @warn """Lanczos eigsolve stopped without convergence after $numiter iterations:
         * $converged eigenvalues converged

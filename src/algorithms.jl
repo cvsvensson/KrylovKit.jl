@@ -32,6 +32,11 @@ struct ClassicalGramSchmidt <: Orthogonalizer end
 Represents the modified Gram Schmidt algorithm for orthogonalizing different vectors,
 typically a reasonable choice for linear systems but not for eigenvalue solvers with a
 large Krylov dimension.
+
+With `Lanczos` and `GKL`, this and [`ClassicalGramSchmidt`](@ref) use only the short
+recurrence, so the basis loses orthogonality as soon as a Ritz value converges. Later steps
+then repeat values that were already found. `eigsolve` and `svdsolve` drop these duplicates,
+with a warning, but the steps spent on them are wasted.
 """
 struct ModifiedGramSchmidt <: Orthogonalizer end
 

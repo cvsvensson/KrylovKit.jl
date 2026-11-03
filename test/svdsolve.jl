@@ -114,3 +114,34 @@ end
         @test A' * u ≈ s * v
     end
 end
+
+@testset "GKL - svdsolve drops ghost values of single-pass Gram-Schmidt" begin
+    # the short recurrence loses orthogonality as σ = 100 converges, and then repeats it
+    rng = Xoshiro(1)
+    Q₁, Q₂ = Matrix(qr(randn(rng, 60, 60)).Q), Matrix(qr(randn(rng, 60, 60)).Q)
+    A = Q₁ * Diagonal([100.0; 50.0; range(1, 0.5, 58)]) * Q₂'
+    x = randn(rng, 60)
+    @testset for orth in (cgs, mgs)
+        alg = GKL(; orth = orth, krylovdim = 30, maxiter = 1, tol = 1.0e-10, verbosity = WARN_LEVEL)
+        S, lvecs, rvecs, info = @test_logs (:warn, r"duplicate values") svdsolve(A, x, 2, :LR, alg)
+        @test S ≈ [100.0, 50.0]
+        @test info.converged == 2
+        U, V = stack(lvecs), stack(rvecs)
+        @test U' * U ≈ I
+        @test V' * V ≈ I
+        @test A * V ≈ U * Diagonal(S)
+
+        # a restart continues from the distinct values
+        alg = GKL(; orth = orth, krylovdim = 20, maxiter = 100, tol = 1.0e-10, verbosity = SILENT_LEVEL)
+        S, _, rvecs, info = svdsolve(A, x, 3, :LR, alg)
+        @test S[1:3] ≈ svdvals(A)[1:3]
+        @test info.converged >= 3
+        @test stack(rvecs)' * stack(rvecs) ≈ I
+    end
+
+    # no ghosts: well separated values, ended by `β = 0`
+    D = Matrix(Diagonal(1.0:8.0))
+    alg = GKL(; orth = mgs, krylovdim = 30, tol = 1.0e-10, verbosity = WARN_LEVEL)
+    S, = @test_logs svdsolve(D, normalize(ones(8)), 1, :LR, alg)
+    @test S ≈ 8.0:-1.0:1.0
+end
