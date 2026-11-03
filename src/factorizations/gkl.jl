@@ -379,7 +379,7 @@ function gklrecurrence(
     v = add!!(v, V[end], -β)
     α = norm(v)
     nold = sqrt(abs2(α) + abs2(β))
-    while eps(one(α)) < α < orth.η * nold
+    while α < orth.η * nold
         nold = α
         for q in V
             v, = orthogonalize!!(v, q, ModifiedGramSchmidt())

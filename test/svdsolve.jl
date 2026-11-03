@@ -114,3 +114,51 @@ end
         @test A' * u ≈ s * v
     end
 end
+
+@testset "GKL - svdsolve with a start vector overlapping the null space of A'" begin
+    A = [2.0 0; 0 1; 0 0]
+    # the recurrence ends on an `α` that is rounding noise or exactly zero
+    starts = ([1.0, 1.0, 1.0], [2.0, 2.0, 1.0])
+    @testset "$mode" for mode in (:vector, :inplace, :outplace, :mixed), x₀ in starts
+        S, lvecs, rvecs, info = @constinferred svdsolve(
+            wrapop(A, Val(mode)), wrapvec(x₀, Val(mode)), 1, :LR, GKL()
+        )
+        @test S ≈ [2.0, 1.0]
+        @test info.converged == 2
+        for (s, u, v) in zip(S, lvecs, rvecs)
+            @test A * unwrapvec(v) ≈ s * unwrapvec(u)
+            @test A' * unwrapvec(u) ≈ s * unwrapvec(v)
+        end
+    end
+    @testset "$which, howmany = 3" for (which, vals) in ((:LR, [2.0, 1.0]), (:SR, [1.0, 2.0])), x₀ in starts
+        S, = @test_logs (:warn, r"returning 2 values") svdsolve(A, x₀, 3, which)
+        @test S ≈ vals
+    end
+    @testset "mgsr, x₀ = $x₀" for x₀ in starts
+        S, = svdsolve(A, x₀, 1, :LR, GKL(; orth = mgsr))
+        @test S ≈ [2.0, 1.0]
+    end
+    @testset "large norm, x₀ = $x₀" for x₀ in starts
+        S, = svdsolve(1.0e5 * A, x₀)
+        @test S ≈ [2.0e5, 1.0e5]
+    end
+    @testset "one column" begin
+        S, = svdsolve(ones(2, 1), [1.0, 0.0])
+        @test S ≈ [sqrt(2)]
+    end
+    @testset "start vector in the null space of A'" begin
+        S, lvecs, rvecs, = @test_logs (:warn, r"returning 0 values") svdsolve(zeros(3, 3), ones(3))
+        @test isempty(S) && isempty(lvecs) && isempty(rvecs)
+    end
+    @testset "value near 0 with a valid right vector, $which" for (A, x₀, which, vals, atol) in (
+            ([1.0 0; 0 1.0e-20], [1.0, 1.0], :LR, [1.0, 1.0e-20], 0.0),
+            ([1.0 0 1; 0 1 1; 1 1 2], [1.0, 2.0, 4.0], :SR, [0.0, 1.0, 3.0], 1.0e-13),
+        )
+        S, lvecs, rvecs, = svdsolve(A, x₀, length(x₀), which, GKL(; krylovdim = 20))
+        @test all(isapprox.(S, vals; atol))
+        for (s, u, v) in zip(S, lvecs, rvecs)
+            @test A * v ≈ s * u atol = 1.0e-13
+            @test A' * u ≈ s * v atol = 1.0e-13
+        end
+    end
+end
