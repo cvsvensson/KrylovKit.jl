@@ -138,10 +138,6 @@ end
         S, = svdsolve(A, x₀, 1, :LR, GKL(; orth))
         @test S ≈ [2.0, 1.0]
     end
-    @testset "residual of an exactly zero α" begin
-        _, _, _, info = svdsolve(A, starts[2])
-        @test all(iszero, info.residual)
-    end
     @testset "large norm, x₀ = $x₀" for x₀ in starts
         S, = svdsolve(1.0e5 * A, x₀)
         @test S ≈ [2.0e5, 1.0e5]

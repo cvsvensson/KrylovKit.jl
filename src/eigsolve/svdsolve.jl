@@ -194,7 +194,6 @@ function svdsolve(
                 K′ = K - 1
                 β = fact.αs[K] = zero(β)
                 V[K] = zerovector!!(V[K])
-                fact.r = zerovector!!(fact.r)
             end
         end
         if β <= tol && K′ < howmany
