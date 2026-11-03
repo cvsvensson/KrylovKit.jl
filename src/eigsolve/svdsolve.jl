@@ -179,22 +179,29 @@ function svdsolve(
     while true
         β = normres(fact)
         K = length(fact)
+        # `α = 0` with `β = 0`: `U` is one vector longer than the invariant part of `V`, so
+        # `A * V[1:K′] = U * B[:, 1:K′]` and `A' * U = V[1:K′] * B[:, 1:K′]'` hold exactly.
+        # The zero column of `B` adds a singular value 0 whose left vector is in the null
+        # space of `A'`, but its right vector is not in the Krylov subspace, so drop it.
+        K′ = iszero(β) && iszero(fact.αs[K]) ? K - 1 : K
 
-        if β <= tol && K < howmany
+        if β <= tol && K′ < howmany
             if alg.verbosity >= WARN_LEVEL
-                _warn_invariant_subspace(K, tol, howmany)
+                _warn_invariant_subspace(K′, tol, howmany)
             end
         end
         if K == krylovdim || β <= tol || (alg.eager && K >= howmany)
             P = copyto!(view(PP, 1:K, 1:K), I)
             Q = copyto!(view(QQ, 1:K, 1:K), I)
-            f = view(HH, K + 1, 1:K)
+            f = view(HH, K + 1, 1:K′)
             B = rayleighquotient(fact) # Bidiagional (lower)
 
             if K < krylovdim
                 B = deepcopy(B)
             end
             P, S, Q = bidiagsvd!(B, P, Q)
+            # singular values are sorted, so the zero one is last
+            P, S, Q = view(P, :, 1:K′), view(S, 1:K′), view(Q, 1:K′, :)
             if which == :SR
                 reversecols!(P)
                 reverserows!(S)
@@ -205,7 +212,7 @@ function svdsolve(
             mul!(f, view(Q', K, :), β)
 
             converged = 0
-            while converged < K && abs(f[converged + 1]) < tol
+            while converged < K′ && abs(f[converged + 1]) < tol
                 converged += 1
             end
 

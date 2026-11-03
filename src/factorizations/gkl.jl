@@ -21,6 +21,9 @@ dedicated name but can be obtained via [`rayleighextension(fact)`](@ref). It tak
 default value ``e_k``, i.e. the unit vector of all zeros and a one in the last entry, which
 is represented using [`SimpleBasisVector`](@ref).
 
+If `A' * U` has no component outside the previous `V`, the last column of `B` is zero and the
+last vector of `V` as well as `r` are zero vectors, so the factorization cannot be expanded.
+
 A GKL factorization `fact` can be destructured as `U, V, B, r, nr, b = fact` with
 `nr = norm(r)`.
 
@@ -194,11 +197,13 @@ function initialize(iter::GKLIterator; verbosity::Int = KrylovDefaults.verbosity
 
     # these lines determines the vector types that we will henceforth use
     u = scale(u₀, one(T) / β₀)
-    v = scale(v₀, one(T) / (α * β₀))
+    # `A' * u₀ == 0`: see `_gkl_normalize!!`
+    s = iszero(α * β₀) ? α * β₀ : inv(α * β₀)
+    v = scale(v₀, s * one(T))
     if typeof(Av₀) == typeof(u)
-        r = scale!!(Av₀, 1 / (α * β₀))
+        r = scale!!(Av₀, s)
     else
-        r = scale!!(zerovector(u), Av₀, 1 / (α * β₀))
+        r = scale!!(zerovector(u), Av₀, s)
     end
     r = add!!(r, u, -α)
     β = norm(r)
@@ -228,7 +233,7 @@ function initialize!(
     u = scale!!(U[1], iter.u₀, 1 / norm(iter.u₀))
     v = apply_adjoint(iter.operator, u)
     α = norm(v)
-    v = scale!!(v, inv(α))
+    v, α = _gkl_normalize!!(v, α, zero(α))
     r = apply_normal(iter.operator, v)
     r = add!!(r, u, -α)
     β = norm(r)
@@ -252,7 +257,8 @@ function expand!(
     V = state.V
     r = state.r
     U = push!(U, scale!!(r, 1 / βold))
-    v, r, α, β = gklrecurrence(iter.operator, U, V, βold, iter.orth)
+    αtol = 10 * eps(typeof(βold)) * max(maximum(state.αs), maximum(state.βs))
+    v, r, α, β = gklrecurrence(iter.operator, U, V, βold, iter.orth, αtol)
 
     push!(V, v)
     push!(state.αs, α)
@@ -291,14 +297,23 @@ function shrink!(state::GKLFactorization, k; verbosity::Int = KrylovDefaults.ver
 end
 
 # Golub-Kahan-Lanczos recurrence relation
+
+# `α <= αtol` means that `A' * u` lies in the span of `V`, so `U` and `V[1:(end - 1)]` are
+# invariant. What is left of `v` is rounding noise, which must not be normalised into a new
+# basis vector. It is set to zero instead, so that the recurrence also yields `r = 0, β = 0`.
+function _gkl_normalize!!(v, α, αtol)
+    α <= αtol && return zerovector!!(v), zero(α)
+    return scale!!(v, inv(α)), α
+end
+
 function gklrecurrence(
-        operator, U::OrthonormalBasis, V::OrthonormalBasis, β, orth::Union{ClassicalGramSchmidt, ModifiedGramSchmidt}
+        operator, U::OrthonormalBasis, V::OrthonormalBasis, β, orth::Union{ClassicalGramSchmidt, ModifiedGramSchmidt}, αtol
     )
     u = U[end]
     v = apply_adjoint(operator, u)
     v = add!!(v, V[end], -β)
     α = norm(v)
-    v = scale!!(v, inv(α))
+    v, α = _gkl_normalize!!(v, α, αtol)
 
     r = apply_normal(operator, v)
     r = add!!(r, u, -α)
@@ -306,14 +321,14 @@ function gklrecurrence(
     return v, r, α, β
 end
 function gklrecurrence(
-        operator, U::OrthonormalBasis, V::OrthonormalBasis, β, orth::ClassicalGramSchmidt2
+        operator, U::OrthonormalBasis, V::OrthonormalBasis, β, orth::ClassicalGramSchmidt2, αtol
     )
     u = U[end]
     v = apply_adjoint(operator, u)
     v = add!!(v, V[end], -β) # not necessary if we definitely reorthogonalize next step and previous step
     # v, = orthogonalize!(v, V, ClassicalGramSchmidt())
     α = norm(v)
-    v = scale!!(v, inv(α))
+    v, α = _gkl_normalize!!(v, α, αtol)
 
     r = apply_normal(operator, v)
     r = add!!(r, u, -α)
@@ -322,7 +337,7 @@ function gklrecurrence(
     return v, r, α, β
 end
 function gklrecurrence(
-        operator, U::OrthonormalBasis, V::OrthonormalBasis, β, orth::ModifiedGramSchmidt2
+        operator, U::OrthonormalBasis, V::OrthonormalBasis, β, orth::ModifiedGramSchmidt2, αtol
     )
     u = U[end]
     v = apply_adjoint(operator, u)
@@ -334,7 +349,7 @@ function gklrecurrence(
         v, = orthogonalize!!(v, q, ModifiedGramSchmidt())
     end
     α = norm(v)
-    v = scale!!(v, inv(α))
+    v, α = _gkl_normalize!!(v, α, αtol)
 
     r = apply_normal(operator, v)
     r = add!!(r, u, -α)
@@ -345,19 +360,19 @@ function gklrecurrence(
     return v, r, α, β
 end
 function gklrecurrence(
-        operator, U::OrthonormalBasis, V::OrthonormalBasis, β, orth::ClassicalGramSchmidtIR
+        operator, U::OrthonormalBasis, V::OrthonormalBasis, β, orth::ClassicalGramSchmidtIR, αtol
     )
     u = U[end]
     v = apply_adjoint(operator, u)
     v = add!!(v, V[end], -β)
     α = norm(v)
     nold = sqrt(abs2(α) + abs2(β))
-    while α < orth.η * nold
+    while αtol < α < orth.η * nold
         nold = α
         v, = orthogonalize!!(v, V, ClassicalGramSchmidt())
         α = norm(v)
     end
-    v = scale!!(v, inv(α))
+    v, α = _gkl_normalize!!(v, α, αtol)
 
     r = apply_normal(operator, v)
     r = add!!(r, u, -α)
@@ -372,21 +387,21 @@ function gklrecurrence(
     return v, r, α, β
 end
 function gklrecurrence(
-        operator, U::OrthonormalBasis, V::OrthonormalBasis, β, orth::ModifiedGramSchmidtIR
+        operator, U::OrthonormalBasis, V::OrthonormalBasis, β, orth::ModifiedGramSchmidtIR, αtol
     )
     u = U[end]
     v = apply_adjoint(operator, u)
     v = add!!(v, V[end], -β)
     α = norm(v)
     nold = sqrt(abs2(α) + abs2(β))
-    while eps(one(α)) < α < orth.η * nold
+    while αtol < α < orth.η * nold
         nold = α
         for q in V
             v, = orthogonalize!!(v, q, ModifiedGramSchmidt())
         end
         α = norm(v)
     end
-    v = scale!!(v, inv(α))
+    v, α = _gkl_normalize!!(v, α, αtol)
 
     r = apply_normal(operator, v)
     r = add!!(r, u, -α)

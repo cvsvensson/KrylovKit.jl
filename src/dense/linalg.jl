@@ -125,6 +125,9 @@ function bidiagsvd!(
         U::AbstractMatrix{T} = one(B),
         VT::AbstractMatrix{T} = one(B)
     ) where {T <: BlasReal}
+    # `bdsqr!` can hang forever on NaN input
+    all(isfinite, B.dv) && all(isfinite, B.ev) ||
+        throw(ArgumentError("bidiagonal matrix contains Inf or NaN values"))
     s, Vt, U = LAPACK.bdsqr!(B.uplo, B.dv, B.ev, VT, U, similar(U, (size(B, 1), 0)))
     return U, s, Vt
 end

@@ -311,6 +311,31 @@ end
     end
 end
 
+# Test Golub-Kahan-Lanczos factorization when `α` vanishes
+@testset "Golub-Kahan-Lanczos factorization with α = 0" begin
+    @testset for orth in (cgs2, mgs2, cgsr, mgsr)
+        A = [2.0 0; 0 1; 1 1] # `V` can not outgrow the 2 dimensional domain
+        iter = GKLIterator(A, [1.0, 2, 3], orth)
+        fact = last(collect(iter))
+        U = stack(basis(fact, Val(:U)))
+        V = stack(basis(fact, Val(:V)))
+        B = rayleighquotient(fact)
+        @test length(fact) == 3
+        @test iszero(normres(fact))
+        @test iszero(V[:, 3])
+        @test U' * U ≈ I
+        @test V[:, 1:2]' * V[:, 1:2] ≈ I
+        @test A * V ≈ U * B
+        @test A' * U ≈ V * B'
+    end
+
+    # start vector in the null space of `A'`
+    iter = GKLIterator([1.0 1; 1 1], [1.0, -1], mgs2)
+    fact = initialize(iter)
+    @test iszero(normres(fact)) && iszero(rayleighquotient(fact))
+    @test iszero(normres(initialize!(iter, fact)))
+end
+
 # Test complete BlockLanczos factorization
 @testset "Complete BlockLanczos factorization " for mode in (:vector, :inplace, :outplace)
     scalartypes = mode === :vector ? (Float32, Float64, ComplexF32, ComplexF64) :
