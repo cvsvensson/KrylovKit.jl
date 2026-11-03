@@ -134,6 +134,10 @@ end
         S, = @test_logs (:warn, r"returning 2 values") svdsolve(A, x₀, 3, which)
         @test S ≈ vals
     end
+    @testset "large norm, x₀ = $x₀" for x₀ in starts
+        S, = svdsolve(1.0e5 * A, x₀)
+        @test S ≈ [2.0e5, 1.0e5]
+    end
     @testset "one column" begin
         S, = svdsolve(ones(2, 1), [1.0, 0.0])
         @test S ≈ [sqrt(2)]
