@@ -179,22 +179,33 @@ function svdsolve(
     while true
         β = normres(fact)
         K = length(fact)
+        K′ = K
 
-        if β <= tol && K < howmany
+        # If `α == 0`, `A' * U[K]` has no new direction and `V[K]` and `β` are `NaN`.
+        # No singular value belongs to that column, so drop it.
+        if iszero(fact.αs[K])
+            K′ = K - 1
+            β = zero(β)
+            V = basis(fact, Val(:V))
+            V[K] = zerovector!!(V[K])
+        end
+        if β <= tol && K′ < howmany
             if alg.verbosity >= WARN_LEVEL
-                _warn_invariant_subspace(K, tol, howmany)
+                _warn_invariant_subspace(K′, tol, howmany)
             end
         end
         if K == krylovdim || β <= tol || (alg.eager && K >= howmany)
             P = copyto!(view(PP, 1:K, 1:K), I)
             Q = copyto!(view(QQ, 1:K, 1:K), I)
-            f = view(HH, K + 1, 1:K)
+            f = view(HH, K + 1, 1:K′)
             B = rayleighquotient(fact) # Bidiagional (lower)
 
             if K < krylovdim
                 B = deepcopy(B)
             end
             P, S, Q = bidiagsvd!(B, P, Q)
+            # singular values are sorted, so that of a dropped column is last
+            P, S, Q = view(P, :, 1:K′), view(S, 1:K′), view(Q, 1:K′, :)
             if which == :SR
                 reversecols!(P)
                 reverserows!(S)
@@ -205,7 +216,7 @@ function svdsolve(
             mul!(f, view(Q', K, :), β)
 
             converged = 0
-            while converged < K && abs(f[converged + 1]) < tol
+            while converged < K′ && abs(f[converged + 1]) < tol
                 converged += 1
             end
 

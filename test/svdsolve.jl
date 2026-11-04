@@ -114,3 +114,37 @@ end
         @test A' * u ≈ s * v
     end
 end
+
+@testset "GKL - svdsolve when the recurrence ends on α == 0" begin
+    # all arithmetic is exact, so that `α == 0` does not depend on rounding
+    A = [2.0 2; 2 0; 0 0; 0 -2]
+    x₀ = ones(4)
+    vals = [2 * sqrt(3), 2.0]
+    @testset "$mode" for mode in (:vector, :inplace, :outplace, :mixed)
+        S, lvecs, rvecs, info = @constinferred svdsolve(
+            wrapop(A, Val(mode)), wrapvec(x₀, Val(mode)), 1, :LR, GKL()
+        )
+        @test S ≈ vals
+        @test info.converged == 2
+        for (s, u, v) in zip(S, lvecs, rvecs)
+            @test A * unwrapvec(v) ≈ s * unwrapvec(u)
+            @test A' * unwrapvec(u) ≈ s * unwrapvec(v)
+        end
+    end
+    @testset "$orth" for orth in (cgs2, mgs2, cgsr, mgsr)
+        S, = svdsolve(A, x₀, 1, :LR, GKL(; orth = orth))
+        @test S ≈ vals
+    end
+    @testset "$which, howmany = 3" for (which, S′) in ((:LR, vals), (:SR, reverse(vals)))
+        S, = @test_logs (:warn, r"returning 2 values") svdsolve(A, x₀, 3, which)
+        @test S ≈ S′
+    end
+    @testset "one column" begin
+        S, = svdsolve(ones(2, 1), [1.0, 0.0])
+        @test S ≈ [sqrt(2)]
+    end
+    @testset "start vector in the null space of A'" begin
+        S, lvecs, rvecs, = @test_logs (:warn, r"returning 0 values") svdsolve(zeros(3, 3), ones(3))
+        @test isempty(S) && isempty(lvecs) && isempty(rvecs)
+    end
+end
