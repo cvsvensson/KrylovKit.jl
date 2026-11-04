@@ -146,9 +146,17 @@ end
         S, = svdsolve(ones(2, 1), [1.0, 0.0])
         @test S ≈ [sqrt(2)]
     end
-    @testset "start vector in the null space of A'" begin
-        S, lvecs, rvecs, = @test_logs (:warn, r"returning 0 values") svdsolve(zeros(3, 3), ones(3))
+    @testset "start vector in the null space of A'" for Z in (zeros(3, 3), spzeros(3, 3))
+        S, lvecs, rvecs, = @test_logs (:warn, r"returning 0 values") svdsolve(Z, ones(3))
         @test isempty(S) && isempty(lvecs) && isempty(rvecs)
+    end
+    @testset "α much smaller than β" begin
+        rng = MersenneTwister(1)
+        P = Matrix(qr(randn(rng, 4, 4)).Q)
+        Q = Matrix(qr(randn(rng, 3, 3)).Q)
+        B = P * [1.0 0 0; 1.0e6 1 0; 0 1.0e6 1; 0 0 1.0e6] * Q'
+        S, = svdsolve(B, P[:, 1])
+        @test S ≈ svdvals(B)
     end
     @testset "value near 0 with a valid right vector, $which" for (A, x₀, which, vals, atol) in (
             ([1.0 0; 0 1.0e-20], [1.0, 1.0], :LR, [1.0, 1.0e-20], 0.0),

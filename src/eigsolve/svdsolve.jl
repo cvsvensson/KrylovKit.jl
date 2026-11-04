@@ -184,8 +184,8 @@ function svdsolve(
         # If `A' * U[K]` lies in the span of `V[1:(K - 1)]`, `V[K]` is noise or `NaN`, which
         # orthogonalizing `r` can hide. No singular value belongs to it, so drop that column.
         # Below `ϵ`, the rounding level of `A`, `tol` cannot tell this apart from an invariant `β`.
-        # The factor 100 is a margin over the rounding error in `A * V[K]`.
-        ϵ = max(tol, 100 * eps(maximum(fact.αs)))
+        # The factor 100 is a heuristic margin over the rounding error in `A * V[K]`, not a derived bound.
+        ϵ = max(tol, 100 * eps(hypot(norm(fact.αs), norm(view(fact.βs, 1:(K - 1))))))
         α = fact.αs[K]
         if α <= ϵ && !(β > ϵ)
             V = basis(fact, Val(:V))
