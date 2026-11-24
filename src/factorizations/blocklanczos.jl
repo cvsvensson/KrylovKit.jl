@@ -120,6 +120,7 @@ uses reorthogonalization steps in every iteration.
 Now our orthogonalizer is only ModifiedGramSchmidt2. So we don't need to provide "keepvecs" because we have to reverse all krylove vectors.
 Dimension of Krylov subspace in BlockLanczosIterator is usually much bigger than lanczos and its Default value is 100.
 `qr_tol` is the tolerance used in [`block_qr!`](@ref) to resolve the rank of a block of vectors.
+If every residual vector falls below `qr_tol`, `expand!` leaves the factorization unchanged.
 
 When iterating over an instance of `BlockLanczosIterator`, the values being generated are
 instances of [`BlockLanczosFactorization`](@ref). 
@@ -174,6 +175,8 @@ function initialize(
 
     # Orthogonalization of the initial block
     _, good_idx, _ = block_qr!(X₁, iter.qr_tol)
+    isempty(good_idx) &&
+        throw(ArgumentError("initial block has no vector with norm above qr_tol = $(iter.qr_tol)"))
     X₁ = X₁[good_idx]
     V = OrthonormalBasis(X₁.vec)
     bs = length(X₁) # block size of the first block
@@ -202,18 +205,20 @@ function expand!(
         verbosity::Int = KrylovDefaults.verbosity[]
     )
     k = state.k
-    R = state.R[1:(state.R_size)]
-    bs = length(R)
+    R₀ = residual(state)
+    bs = length(R₀)
     V = state.V
-    Rcopy = copy(R)
+    R = copy(R₀) # `block_qr!` overwrites its argument, and `state` must stay intact if nothing is added
 
     # Calculate the new basis and B
     B, good_idx, is_drift = block_qr!(R, iter.qr_tol)
     if is_drift # Prevent column subspace of R from drifting caused by an excessively small β in block_qr!
         block_reorthogonalize!(R, V)
-        _, good_idx, is_drift = block_qr!(R, iter.qr_tol)
-        B = block_inner(R[good_idx], Rcopy) # Make sure R = XB
+        _, good_idx, _ = block_qr!(R, iter.qr_tol)
     end
+    # Every residual vector is below `qr_tol`: there is no new direction to add.
+    isempty(good_idx) && return state
+    is_drift && (B = block_inner(R[good_idx], R₀)) # Make sure R₀ = XB
 
     bs_next = length(good_idx)
     push!(V, R[good_idx])

@@ -687,6 +687,22 @@ end
     @test findmax([norm(Aip(V[i]) - D[i] * V[i]) for i in 1:eig_num])[1] < tolerance(T)
 end
 
+@testset "BlockLanczos - residual vectors below qr_tol" begin
+    # The two residual vectors are both ε/√2 * v₃, each below qr_tol = tol, while the
+    # residual of the Ritz vector v₁ is ε > tol: no expansion is possible, yet not converged.
+    tol = 1.0e-8
+    ε = 1.2 * tol
+    Q = Matrix(qr(rand(n, n)).Q)
+    v₁, v₂, v₃ = Q[:, 1], Q[:, 2], Q[:, 3]
+    A = Hermitian(Q * Diagonal(1.0:n) * Q' + ε * (v₃ * v₁' + v₁ * v₃'))
+    x₀ = Block([(v₁ + v₂) / √2, (v₁ - v₂) / √2])
+    alg = BlockLanczos(; tol, qr_tol = tol, verbosity = SILENT_LEVEL)
+    D, V, info = eigsolve(A, x₀, 1, :SR, alg)
+    @test D[1] ≈ 1
+    @test info.converged == 0
+    @test info.normres[1] ≈ norm(A * V[1] - D[1] * V[1])
+end
+
 # with the same krylovdim, BlockLanczos has lower accuracy with the size of block larger than 1.
 @testset "Compare Lanczos and BlockLanczos $mode" for mode in
     (:vector, :inplace, :outplace)

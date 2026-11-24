@@ -23,6 +23,7 @@ function eigsolve(
     numiter = 1
 
     converged = 0
+    invariant = false # residual block is numerically zero at `qr_tol`, though maybe not at `tol`
     local normresiduals, D, U
 
     while true
@@ -33,7 +34,7 @@ function eigsolve(
             _warn_invariant_subspace(K, tol, howmany)
         end
         # BlockLanczos can access the case of K = 1 and doesn't need extra processing
-        if K >= krylovdim || β <= tol || (alg.eager && K >= howmany)
+        if K >= krylovdim || β <= tol || invariant || (alg.eager && K >= howmany)
             # Compute eigenvalues
             # Note: Fast eigen solver for block tridiagonal matrices is not implemented yet.
             BTD = view(fact.H, 1:K, 1:K)
@@ -53,7 +54,7 @@ function eigsolve(
             while converged < K && normresiduals[converged + 1] <= tol
                 converged += 1
             end
-            if converged >= howmany || β <= tol  # Successfully find enough eigenvalues.
+            if converged >= howmany || β <= tol || invariant
                 break
             elseif verbosity >= EACHITERATION_LEVEL
                 @info "BlockLanczos eigsolve in iteration $numiter, Krylov dimension = $K: $converged values converged, normres = $(normres2string(normresiduals[1:howmany]))"
@@ -62,7 +63,8 @@ function eigsolve(
 
         if K < krylovdim
             expand!(iter, fact; verbosity = verbosity)
-            numops += fact.R_size
+            invariant = length(fact) == K
+            invariant || (numops += fact.R_size)
         else # Shrink and restart following the shrinking method of `Lanczos`.
             numiter >= maxiter && break
             keep = max(div(3 * krylovdim + 2 * converged, 5 * bs_R), 1) * bs_R
