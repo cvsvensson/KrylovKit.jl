@@ -206,7 +206,7 @@ function expand!(
     H = state.H
     r = state.r
     β = normres(state)
-    push!(V, scale(r, 1 / β))
+    push!(V, scale!!(r, 1 / β))
     m = length(H)
     resize!(H, m + k + 1)
     r, β = arnoldirecurrence!!(iter.operator, V, view(H, (m + 1):(m + k)), iter.orth)

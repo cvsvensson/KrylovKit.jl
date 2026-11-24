@@ -227,25 +227,6 @@ function svdsolve(
             # Determine how many to keep
             keep = div(3 * krylovdim + 2 * converged, 5) # strictly smaller than krylovdim since converged < howmany <= krylovdim, at least equal to converged
 
-            # Update basis by applying P and Q using Householder reflections
-            U = basis(fact, Val(:U))
-            basistransform!(U, view(P, :, 1:keep))
-            # for j = 1:m
-            #     h, ν = householder(P, j:m, j)
-            #     lmul!(h, view(P, :, j+1:krylovdim))
-            #     rmul!(U, h')
-            # end
-            V = basis(fact, Val(:V))
-            basistransform!(V, view(Q', :, 1:keep))
-            # for j = 1:m
-            #     h, ν = householder(Q, j, j:m)
-            #     rmul!(view(Q, j+1:krylovdim, :), h)
-            #     rmul!(V, h)
-            # end
-
-            # Shrink GKL factorization (no longer strictly GKL)
-            r = residual(fact)
-            U[keep + 1] = scale!!(r, 1 / normres(fact))
             H = fill!(view(HH, 1:(keep + 1), 1:keep), zero(eltype(HH)))
             @inbounds for j in 1:keep
                 H[j, j] = S[j]
@@ -258,13 +239,21 @@ function svdsolve(
                 H[j + 1, j] = ν
                 H[j + 1, 1:(j - 1)] .= zero(eltype(H))
                 rmul!(view(H, 1:j, :), h')
-                rmul!(V, h')
+                lmul!(h, view(Q, 1:keep, :))
                 h, ν = householder(H, 1:j, j, j)
                 H[j, j] = ν
                 @inbounds H[1:(j - 1), j] .= zero(eltype(H))
                 lmul!(h, view(H, :, 1:(j - 1)))
-                rmul!(U, h')
+                rmul!(view(P, :, 1:keep), h')
             end
+
+            # Update the bases with the accumulated transformations
+            U = basis(fact, Val(:U))
+            basistransform!(U, view(P, :, 1:keep))
+            V = basis(fact, Val(:V))
+            basistransform!(V, view(Q', :, 1:keep))
+            r = residual(fact)
+            U[keep + 1] = scale!!(r, 1 / normres(fact))
             @inbounds for j in 1:keep
                 fact.αs[j] = H[j, j]
                 fact.βs[j] = H[j + 1, j]

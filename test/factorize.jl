@@ -367,6 +367,27 @@ end
     end
 end
 
+@testset "BlockLanczos factorization with block reorthogonalization" begin
+    # a large `qr_tol` makes `block_qr!` report drift, so `expand!` reorthogonalizes the new block
+    T = Float64
+    A = rand(T, N, N) .- one(T) / 2
+    A = (A + A') / 2
+    x₀m = Matrix(qr(rand(T, N, 2)).Q)
+    x₀ = KrylovKit.Block([x₀m[:, i] for i in 1:2])
+    iter = BlockLanczosIterator(A, x₀, N, KrylovKit.KrylovDefaults.orth, 0.05)
+    fact = initialize(iter)
+    for _ in 1:5
+        expand!(iter, fact)
+        k = fact.k
+        rs = fact.R_size
+        V = hcat(fact.V[1:k]...)
+        r = hcat(fact.R[1:rs]...)
+        e = hcat(zeros(T, rs, k - rs), I)
+        @test V' * V ≈ I
+        @test A * V ≈ V * fact.H[1:k, 1:k] + r * e
+    end
+end
+
 # Test incomplete BlockLanczos factorization
 @testset "Incomplete BlockLanczos factorization " for mode in
     (:vector, :inplace, :outplace)

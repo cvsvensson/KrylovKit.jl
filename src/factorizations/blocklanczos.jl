@@ -205,14 +205,14 @@ function expand!(
     R = state.R[1:(state.R_size)]
     bs = length(R)
     V = state.V
-    Rcopy = copy(R)
 
     # Calculate the new basis and B
     B, good_idx, is_drift = block_qr!(R, iter.qr_tol)
     if is_drift # Prevent column subspace of R from drifting caused by an excessively small β in block_qr!
+        X₁ = copy(R[good_idx])
         block_reorthogonalize!(R, V)
         _, good_idx, is_drift = block_qr!(R, iter.qr_tol)
-        B = block_inner(R[good_idx], Rcopy) # Make sure R = XB
+        B = block_inner(R[good_idx], X₁) * B # Make sure R = XB, using R = X₁B
     end
 
     bs_next = length(good_idx)
