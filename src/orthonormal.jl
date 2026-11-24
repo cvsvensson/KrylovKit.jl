@@ -289,7 +289,7 @@ and are stored in `b`, so the old basis vectors are thrown away. Note that, by d
 the subspace spanned by these basis vectors is exactly the same.
 """
 function basistransform!(b::OrthonormalBasis{T}, U::AbstractMatrix) where {T} # U should be unitary or isometric
-    if _use_multithreaded_array_kernel(b)
+    if T <: Array{<:Number} && isbitstype(eltype(T))
         return basistransform_linear_multithreaded!(b, U)
     end
     m, n = size(U)
@@ -327,27 +327,27 @@ function basistransform_linear_multithreaded!(
     m == length(b) || throw(DimensionMismatch())
     K = length(b[1])
 
+    # rows `I` of the new vectors only depend on rows `I` of the old ones, so each block
+    # of rows is transformed in a small buffer and written back in place
     blocksize = prevpow(2, div(BLOCKSIZE, m))
-    let b2 = [similar(b[1]) for j in 1:n], K = K, m = m, n = n
+    let K = K, m = m, n = n
         @sync for II in splitrange(1:blocksize:K, get_num_threads())
-            Threads.@spawn for I in $II
-                @inbounds for j in 1:n
-                    b2j = b2[j]
-                    @simd for i in I:min(I + blocksize - 1, K)
-                        b2j[i] = zero(b2j[i])
-                    end
-                    for k in 1:m
-                        bk = b[k]
-                        Ukj = U[k, j]
-                        @simd for i in I:min(I + blocksize - 1, K)
-                            b2j[i] += bk[i] * Ukj
+            Threads.@spawn begin
+                buffer = Matrix{eltype(b[1])}(undef, blocksize, n)
+                for I in $II
+                    rows = I:min(I + blocksize - 1, K)
+                    for j in 1:n
+                        bufj = view(buffer, 1:length(rows), j)
+                        fill!(bufj, zero(eltype(bufj)))
+                        for k in 1:m
+                            bufj .+= view(b[k], rows) .* U[k, j]
                         end
+                    end
+                    for j in 1:n
+                        copyto!(view(b[j], rows), view(buffer, 1:length(rows), j))
                     end
                 end
             end
-        end
-        for j in 1:n
-            b[j] = b2[j]
         end
     end
     return b

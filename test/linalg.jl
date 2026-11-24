@@ -24,6 +24,17 @@ using KrylovKit: OrthonormalBasis, householder, rows, cols, hschur!, schur2eigva
     end
 end
 
+@testset "basistransform! $mode" for mode in (:vector, :inplace)
+    @testset for S in (Float32, Float64, ComplexF32, ComplexF64)
+        m, k, L = 8, 5, 5000 # L is not a multiple of the row block size
+        Q = Matrix(qr(randn(S, L, m)).Q)
+        U = Matrix(qr(randn(S, m, m)).Q)[:, 1:k]
+        b = OrthonormalBasis([wrapvec(Q[:, i], Val(mode)) for i in 1:m])
+        KrylovKit.basistransform!(b, U)
+        @test hcat(unwrapvec.(b[1:k])...) ≈ Q * U
+    end
+end
+
 @testset "Givens and Householder" begin
     @testset for S in (Float32, Float64, ComplexF32, ComplexF64)
         U, = svd!(randn(S, (n, n)))
