@@ -30,7 +30,7 @@ function eigsolve(
         K = length(fact)
         β = normres(fact)
 
-        if β < tol && K < howmany && verbosity >= WARN_LEVEL
+        if (β < tol || invariant) && K < howmany && verbosity >= WARN_LEVEL
             _warn_invariant_subspace(K, tol, howmany)
         end
         # BlockLanczos can access the case of K = 1 and doesn't need extra processing
@@ -63,8 +63,8 @@ function eigsolve(
 
         if K < krylovdim
             expand!(iter, fact; verbosity = verbosity)
+            numops += length(fact) - K
             invariant = length(fact) == K
-            invariant || (numops += fact.R_size)
         else # Shrink and restart following the shrinking method of `Lanczos`.
             numiter >= maxiter && break
             keep = max(div(3 * krylovdim + 2 * converged, 5 * bs_R), 1) * bs_R

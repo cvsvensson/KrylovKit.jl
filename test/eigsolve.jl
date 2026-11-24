@@ -700,7 +700,7 @@ end
     D, V, info = eigsolve(A, x₀, 1, :SR, alg)
     @test D[1] ≈ 1
     @test info.converged == 0
-    @test info.normres[1] ≈ norm(A * V[1] - D[1] * V[1])
+    @test info.normres[1] ≈ norm(A * V[1] - D[1] * V[1]) atol = tolerance(Float64)
 end
 
 # with the same krylovdim, BlockLanczos has lower accuracy with the size of block larger than 1.

@@ -216,7 +216,6 @@ function expand!(
         block_reorthogonalize!(R, V)
         _, good_idx, _ = block_qr!(R, iter.qr_tol)
     end
-    # Every residual vector is below `qr_tol`: there is no new direction to add.
     isempty(good_idx) && return state
     is_drift && (B = block_inner(R[good_idx], R₀)) # Make sure R₀ = XB
 
