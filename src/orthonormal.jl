@@ -329,7 +329,7 @@ function basistransform_linear_multithreaded!(
 
     # rows `I` of the new vectors only depend on rows `I` of the old ones, so each block
     # of rows is transformed in a small buffer and written back in place
-    blocksize = prevpow(2, div(BLOCKSIZE, m))
+    blocksize = prevpow(2, max(1, div(BLOCKSIZE, m)))
     let K = K, m = m, n = n
         @sync for II in splitrange(1:blocksize:K, get_num_threads())
             Threads.@spawn begin
