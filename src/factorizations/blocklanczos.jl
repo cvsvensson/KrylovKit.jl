@@ -120,7 +120,6 @@ uses reorthogonalization steps in every iteration.
 Now our orthogonalizer is only ModifiedGramSchmidt2. So we don't need to provide "keepvecs" because we have to reverse all krylove vectors.
 Dimension of Krylov subspace in BlockLanczosIterator is usually much bigger than lanczos and its Default value is 100.
 `qr_tol` is the tolerance used in [`block_qr!`](@ref) to resolve the rank of a block of vectors.
-If every residual vector falls below `qr_tol`, `expand!` leaves the factorization unchanged.
 
 When iterating over an instance of `BlockLanczosIterator`, the values being generated are
 instances of [`BlockLanczosFactorization`](@ref). 
